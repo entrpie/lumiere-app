@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ==================== PALETA DE COLORES (COHERENTE CON INVENTARIO) ====================
+// =================== PALETA DE COLORES (COHERENTE CON INVENTARIO) ===================
 class _Colors {
   static const bg = Color(0xFFFAF8F5);
   static const card = Colors.white;
