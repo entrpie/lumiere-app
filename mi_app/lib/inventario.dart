@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // Para poder regresar al Login al cerrar sesión
+import 'reportes.dart';
+import 'usuarios.dart';
 
 // ==================== PALETA DE COLORES ====================
 class _Colors {
@@ -32,7 +34,7 @@ class _Colors {
 }
 
 // Secciones disponibles en el sidebar
-enum _NavSection { catalogo, categorias, reportes }
+enum _NavSection { catalogo, usuarios, reportes }
 
 // Filtro de disponibilidad usado en el panel de filtros
 enum _StockFilter { todos, disponible, bajo }
@@ -223,8 +225,8 @@ class _InventarioPageState extends State<InventarioPage> {
     switch (_section) {
       case _NavSection.catalogo:
         return 'Catálogo';
-      case _NavSection.categorias:
-        return 'Categorías';
+      case _NavSection.usuarios:
+        return 'Usuarios';
       case _NavSection.reportes:
         return 'Reportes';
     }
@@ -234,8 +236,8 @@ class _InventarioPageState extends State<InventarioPage> {
     switch (_section) {
       case _NavSection.catalogo:
         return 'Todos los productos de la tienda';
-      case _NavSection.categorias:
-        return 'Explora tu inventario por tipo de producto';
+      case _NavSection.usuarios:
+        return 'Gestiona tus usuarios y permisos';
       case _NavSection.reportes:
         return 'Estadísticas generales del inventario';
     }
@@ -251,8 +253,10 @@ class _InventarioPageState extends State<InventarioPage> {
       body: SafeArea(
         child: switch (_section) {
           _NavSection.catalogo => _buildCatalogoSection(),
-          _NavSection.categorias => _buildCategoriasSection(),
-          _NavSection.reportes => _buildReportesSection(),
+          _NavSection.usuarios =>
+            const UsuariosPage(), // <--- Apunta a tu clase externa de usuarios.dart
+          _NavSection.reportes =>
+            const ReportesPage(), // <--- Apunta a tu clase externa de reportes.dart
         },
       ),
     );
@@ -336,12 +340,12 @@ class _InventarioPageState extends State<InventarioPage> {
               },
             ),
             _NavTile(
-              icon: Icons.category_rounded,
-              label: 'Categorías',
-              subtitle: 'Organiza por tipo',
-              selected: _section == _NavSection.categorias,
+              icon: Icons.person_rounded,
+              label: 'Usuarios',
+              subtitle: 'Gestiona tus usuarios',
+              selected: _section == _NavSection.usuarios,
               onTap: () {
-                setState(() => _section = _NavSection.categorias);
+                setState(() => _section = _NavSection.usuarios);
                 Navigator.pop(context);
               },
             ),
@@ -352,7 +356,7 @@ class _InventarioPageState extends State<InventarioPage> {
               selected: _section == _NavSection.reportes,
               onTap: () {
                 setState(() => _section = _NavSection.reportes);
-                Navigator.pop(context);
+                Navigator.pop(context); // Cierra el sidebar
               },
             ),
             const Spacer(),
@@ -896,7 +900,7 @@ class _InventarioPageState extends State<InventarioPage> {
     );
   }
 
-  // Formulario completo y saneado
+  // Formulario de creación completo y corregido
   Widget _buildAddForm() {
     return Container(
       color: Colors.white,
@@ -915,19 +919,33 @@ class _InventarioPageState extends State<InventarioPage> {
                   color: _Colors.textDark,
                 ),
               ),
+              const SizedBox(height: 4),
+              const Text(
+                'Ingresa los datos para registrarlo',
+                style: TextStyle(fontSize: 12, color: _Colors.textGray),
+              ),
               const SizedBox(height: 24),
+
+              // Nombre
               const Text(
                 'Nombre del Producto',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nombreController,
-                decoration: _inputDecoration('Ej. Vela Aromática de Vainilla'),
+                decoration: InputDecoration(
+                  hintText: 'Ej. Velas Cilíndricas',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
                 validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Campo requerido' : null,
+                    v!.isEmpty ? 'Ingresa un nombre válido' : null,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Precio y Stock
               Row(
                 children: [
                   Expanded(
@@ -935,9 +953,9 @@ class _InventarioPageState extends State<InventarioPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Precio',
+                          'Precio (\$)',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
                             fontSize: 13,
                           ),
                         ),
@@ -947,23 +965,28 @@ class _InventarioPageState extends State<InventarioPage> {
                           keyboardType: const TextInputType.numberWithOptions(
                             decimal: true,
                           ),
-                          decoration: _inputDecoration('0.00'),
+                          decoration: InputDecoration(
+                            hintText: '0.00',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
                           validator: (v) => double.tryParse(v ?? '') == null
-                              ? 'Número inválido'
+                              ? 'Inválido'
                               : null,
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Stock Inicial',
+                          'Stock',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.bold,
                             fontSize: 13,
                           ),
                         ),
@@ -971,31 +994,47 @@ class _InventarioPageState extends State<InventarioPage> {
                         TextFormField(
                           controller: _stockController,
                           keyboardType: TextInputType.number,
-                          decoration: _inputDecoration('0'),
-                          validator: (v) => int.tryParse(v ?? '') == null
-                              ? 'Número inválido'
-                              : null,
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          validator: (v) =>
+                              int.tryParse(v ?? '') == null ? 'Inválido' : null,
                         ),
                       ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Categoría
               const Text(
                 'Categoría',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
                 value: _categoriaSeleccionada,
-                items: _categorias
-                    .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                    .toList(),
-                onChanged: (v) => setState(() => _categoriaSeleccionada = v!),
-                decoration: _inputDecoration(''),
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                items: _categorias.map((cat) {
+                  return DropdownMenuItem(value: cat, child: Text(cat));
+                }).toList(),
+                onChanged: (v) {
+                  setState(() {
+                    _categoriaSeleccionada = v!;
+                  });
+                },
               ),
               const SizedBox(height: 32),
+
+              // Botón Guardar
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -1010,7 +1049,14 @@ class _InventarioPageState extends State<InventarioPage> {
                     elevation: 0,
                   ),
                   child: _isSaving
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
                       : const Text(
                           'Guardar Producto',
                           style: TextStyle(fontWeight: FontWeight.bold),
@@ -1024,93 +1070,73 @@ class _InventarioPageState extends State<InventarioPage> {
     );
   }
 
-  InputDecoration _inputDecoration(String hint) {
-    return InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: _Colors.textGray, fontSize: 13),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      filled: true,
-      fillColor: _Colors.bg,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _Colors.brand, width: 1),
-      ),
-    );
-  }
-
-  // Placeholders para secciones adicionales
-  Widget _buildCategoriasSection() =>
-      const Center(child: Text('Vista Categorías'));
-  Widget _buildReportesSection() => const Center(child: Text('Vista Reportes'));
-  Widget _buildEmptyState() =>
-      const Center(child: Text('No hay productos en la base de datos.'));
-  Widget _buildEmptyFilterState() =>
-      const Center(child: Text('Ningún producto coincide con los filtros.'));
-}
-
-// ==================== COMPONENTES AUXILIARES DE UI ====================
-class _NavTile extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String? subtitle;
-  final bool selected;
-  final bool danger;
-  final VoidCallback onTap;
-
-  const _NavTile({
-    required this.icon,
-    required this.label,
-    required this.subtitle,
-    required this.selected,
-    this.danger = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = danger
-        ? _Colors.danger
-        : selected
-        ? _Colors.sidebarText
-        : _Colors.sidebarTextMuted;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: ListTile(
-        onTap: onTap,
-        dense: true,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        tileColor: selected ? _Colors.sidebarSelected : Colors.transparent,
-        leading: Icon(icon, color: color, size: 20),
-        title: Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-            fontSize: 13,
+  // Estado vacío del catálogo (Sin items en la DB)
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: _Colors.textGray.withOpacity(0.5),
           ),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle!,
-                style: const TextStyle(
-                  color: _Colors.sidebarTextMuted,
-                  fontSize: 10,
-                ),
-              )
-            : null,
+          const SizedBox(height: 16),
+          const Text(
+            'Aún no hay productos registrados',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: _Colors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Comienza agregando uno en el botón superior.',
+            style: TextStyle(fontSize: 13, color: _Colors.textGray),
+          ),
+        ],
       ),
     );
   }
+
+  // Estado vacío por filtros aplicados
+  Widget _buildEmptyFilterState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off_rounded,
+            size: 64,
+            color: _Colors.textGray.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Sin coincidencias',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: _Colors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Intenta modificando o limpiando tus filtros.',
+            style: TextStyle(fontSize: 13, color: _Colors.textGray),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Vista vacía temporal de fallback para usuarios si no hay widget externo mapeado
+  Widget _buildUsuariosSection() {
+    return const Center(child: Text('Usuarios Page Fallback'));
+  }
 }
+
+// ==================== WIDGETS DE SOPORTE COMPARTIDOS ====================
 
 class _KpiCard extends StatelessWidget {
   final IconData icon;
@@ -1128,65 +1154,51 @@ class _KpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _Colors.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _Colors.border),
       ),
       child: Row(
         children: [
-          Icon(icon, color: accent ?? _Colors.brand, size: 24),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(fontSize: 11, color: _Colors.textGray),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: accent ?? _Colors.textDark,
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: (accent ?? _Colors.brand).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: accent ?? _Colors.brand, size: 24),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _Colors.textGray,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: accent ?? _Colors.textDark,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _FilterChipTag extends StatelessWidget {
-  final String label;
-  final VoidCallback onRemove;
-
-  const _FilterChipTag({required this.label, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(
-      label: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: _Colors.brand,
-        ),
-      ),
-      backgroundColor: _Colors.brandLight.withOpacity(0.15),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-        side: BorderSide.none,
-      ),
-      onDeleted: onRemove,
-      deleteIcon: const Icon(Icons.close, size: 14),
-      deleteIconColor: _Colors.brand,
-      visualDensity: VisualDensity.compact,
     );
   }
 }
@@ -1212,17 +1224,19 @@ class _ProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final gradient =
         _Colors.imageGradients[colorIndex % _Colors.imageGradients.length];
-    final isLowStock = stock < 5;
+    final esBajoStock = stock < 5;
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _Colors.card,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: _Colors.border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Imagen decorativa / Categoría
           Expanded(
             child: Container(
               decoration: BoxDecoration(
@@ -1231,29 +1245,35 @@ class _ProductCard extends StatelessWidget {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(15),
-                ),
               ),
               child: Stack(
                 children: [
                   Center(
                     child: Icon(
                       _iconoCategoria(categoria),
-                      color: _Colors.brand.withOpacity(0.35),
-                      size: 42,
+                      size: 40,
+                      color: _Colors.brand.withOpacity(0.6),
                     ),
                   ),
                   Positioned(
                     top: 10,
                     right: 10,
-                    child: IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline_rounded,
-                        color: _Colors.danger,
-                        size: 20,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.white24,
+                        shape: BoxShape.circle,
                       ),
-                      onPressed: onDelete,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Colors.redAccent,
+                        ),
+                        onPressed: onDelete,
+                        constraints: const BoxConstraints(),
+                        padding: EdgeInsets.zero,
+                      ),
                     ),
                   ),
                 ],
@@ -1261,7 +1281,7 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(12.0),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1269,9 +1289,8 @@ class _ProductCard extends StatelessWidget {
                   categoria.toUpperCase(),
                   style: const TextStyle(
                     fontSize: 9,
-                    color: _Colors.textGray,
                     fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
+                    color: _Colors.brandLight,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1280,8 +1299,8 @@ class _ProductCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
                     fontWeight: FontWeight.bold,
+                    fontSize: 13,
                     color: _Colors.textDark,
                   ),
                 ),
@@ -1292,8 +1311,8 @@ class _ProductCard extends StatelessWidget {
                     Text(
                       '\$${precio.toStringAsFixed(2)}',
                       style: const TextStyle(
+                        fontWeight: FontWeight.bold,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
                         color: _Colors.brand,
                       ),
                     ),
@@ -1303,9 +1322,9 @@ class _ProductCard extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: isLowStock
-                            ? _Colors.danger.withOpacity(0.12)
-                            : _Colors.success.withOpacity(0.12),
+                        color: esBajoStock
+                            ? _Colors.danger.withOpacity(0.1)
+                            : _Colors.success.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1313,7 +1332,7 @@ class _ProductCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: isLowStock ? _Colors.danger : _Colors.success,
+                          color: esBajoStock ? _Colors.danger : _Colors.success,
                         ),
                       ),
                     ),
@@ -1323,6 +1342,117 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterChipTag extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+
+  const _FilterChipTag({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _Colors.brandLight.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _Colors.brandLight.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: _Colors.brand,
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(
+              Icons.close_rounded,
+              size: 14,
+              color: _Colors.brand,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NavTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? subtitle;
+  final bool selected;
+  final bool danger;
+  final VoidCallback onTap;
+
+  const _NavTile({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.selected,
+    this.danger = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = danger
+        ? _Colors.danger
+        : selected
+        ? _Colors.sidebarText
+        : _Colors.sidebarTextMuted;
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? _Colors.sidebarSelected : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: color,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: selected
+                            ? _Colors.sidebarText.withOpacity(0.7)
+                            : _Colors.sidebarTextMuted,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
