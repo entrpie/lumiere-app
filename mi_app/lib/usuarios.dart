@@ -3,23 +3,537 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main.dart'; // Para poder regresar al Login al cerrar sesión
 import 'reportes.dart';
-import 'usuarios.dart';
 
-// usuarios.dart
-import 'package:flutter/material.dart';
-
-class UsuariosPage extends StatelessWidget {
+class UsuariosPage extends StatefulWidget {
   const UsuariosPage({super.key});
 
   @override
+  State<UsuariosPage> createState() => _UsuariosPageState();
+}
+
+class _UsuariosPageState extends State<UsuariosPage> {
+  final _formKey = GlobalKey<FormState>();
+  final _searchController = TextEditingController();
+  final _nombreController = TextEditingController();
+  final _emailController = TextEditingController();
+
+  String _searchQuery = '';
+  bool _showAddPanel = false;
+  bool _isSaving = false;
+  bool _activo = true;
+  String _rolSeleccionado = 'Administrador';
+
+  final List<String> _roles = [
+    'Administrador',
+    'Supervisor',
+    'Vendedor',
+    'Operador',
+  ];
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _nombreController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  List<QueryDocumentSnapshot> _filtrarUsuarios(
+    List<QueryDocumentSnapshot> docs,
+  ) {
+    return docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      final nombre = (data['nombre'] ?? '').toString().toLowerCase();
+      final email = (data['email'] ?? '').toString().toLowerCase();
+      final rol = (data['rol'] ?? '').toString().toLowerCase();
+      final query = _searchQuery.toLowerCase();
+      return query.isEmpty ||
+          nombre.contains(query) ||
+          email.contains(query) ||
+          rol.contains(query);
+    }).toList();
+  }
+
+  Future<void> _agregarUsuario() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      await FirebaseFirestore.instance.collection('usuarios').add({
+        'nombre': _nombreController.text.trim(),
+        'email': _emailController.text.trim(),
+        'rol': _rolSeleccionado,
+        'activo': _activo,
+        'creadoEn': Timestamp.now(),
+      });
+
+      if (!mounted) return;
+
+      _nombreController.clear();
+      _emailController.clear();
+      setState(() {
+        _rolSeleccionado = 'Administrador';
+        _activo = true;
+        _showAddPanel = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Usuario agregado correctamente'),
+          backgroundColor: _Colors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('No se pudo guardar el usuario'),
+          backgroundColor: _Colors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  Widget _buildListaUsuarios(
+    List<QueryDocumentSnapshot> docs,
+    List<QueryDocumentSnapshot> filtrados,
+  ) {
+    final totalActivos = docs.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return (data['activo'] ?? false) == true;
+    }).length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _KpiCard(
+                icon: Icons.people_alt_rounded,
+                label: 'Usuarios',
+                value: '${docs.length}',
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: _KpiCard(
+                icon: Icons.check_circle_rounded,
+                label: 'Activos',
+                value: '$totalActivos',
+                accent: _Colors.success,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                height: 46,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _Colors.border),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar usuarios por nombre, email o rol',
+                    hintStyle: TextStyle(
+                      color: _Colors.textGray.withValues(alpha: 0.8),
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: _Colors.textGray,
+                    ),
+                    suffixIcon: _searchQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: () => setState(() => _showAddPanel = !_showAddPanel),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _showAddPanel
+                    ? _Colors.textDark
+                    : _Colors.brand,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: Icon(
+                _showAddPanel
+                    ? Icons.close_rounded
+                    : Icons.person_add_alt_rounded,
+                size: 18,
+              ),
+              label: Text(
+                _showAddPanel ? 'Cerrar formulario' : 'Agregar Usuario',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        Expanded(
+          child: docs.isEmpty
+              ? const Center(child: Text('Aún no hay usuarios registrados.'))
+              : filtrados.isEmpty
+              ? const Center(
+                  child: Text('No hay usuarios que coincidan con la búsqueda.'),
+                )
+              : ListView.separated(
+                  itemCount: filtrados.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final doc = filtrados[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final nombre = (data['nombre'] ?? 'Sin nombre').toString();
+                    final email = (data['email'] ?? 'Sin email').toString();
+                    final rol = (data['rol'] ?? 'Sin rol').toString();
+                    final activo = (data['activo'] ?? false) == true;
+
+                    return Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _Colors.border),
+                        boxShadow: [
+                          BoxShadow(
+                            color: _Colors.brand.withValues(alpha: 0.06),
+                            blurRadius: 18,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 26,
+                            backgroundColor: _Colors.brandLight,
+                            child: Text(
+                              nombre.isNotEmpty ? nombre[0].toUpperCase() : 'U',
+                              style: const TextStyle(
+                                color: _Colors.textDark,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nombre,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  email,
+                                  style: const TextStyle(
+                                    color: _Colors.textGray,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Rol: $rol',
+                                  style: const TextStyle(
+                                    color: _Colors.brand,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: activo
+                                  ? _Colors.success.withValues(alpha: 0.12)
+                                  : _Colors.danger.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              activo ? 'Activo' : 'Inactivo',
+                              style: TextStyle(
+                                color: activo
+                                    ? _Colors.success
+                                    : _Colors.danger,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddUserForm() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Nuevo Usuario',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: _Colors.textDark,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Completa los datos para registrar un nuevo acceso.',
+                style: TextStyle(fontSize: 12, color: _Colors.textGray),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Nombre completo',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _nombreController,
+                decoration: InputDecoration(
+                  hintText: 'Ej. Sofia López',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: _Colors.bg,
+                ),
+                validator: (value) => (value == null || value.trim().isEmpty)
+                    ? 'Ingresa un nombre válido'
+                    : null,
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Correo electrónico',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  hintText: 'usuario@lumiere.com',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: _Colors.bg,
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Ingresa un correo';
+                  }
+                  final emailRegex = RegExp(
+                    r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                  );
+                  return emailRegex.hasMatch(value.trim())
+                      ? null
+                      : 'Correo inválido';
+                },
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'Rol',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: _rolSeleccionado,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: _Colors.bg,
+                ),
+                items: _roles.map((rol) {
+                  return DropdownMenuItem<String>(value: rol, child: Text(rol));
+                }).toList(),
+                onChanged: (value) {
+                  setState(() => _rolSeleccionado = value ?? 'Administrador');
+                },
+              ),
+              const SizedBox(height: 18),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: _Colors.bg,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: _Colors.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Estado del usuario',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _activo ? 'Activo y con acceso' : 'Inactivo',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: _Colors.textGray,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch.adaptive(
+                      value: _activo,
+                      onChanged: (value) => setState(() => _activo = value),
+                      activeColor: _Colors.brand,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 26),
+              SizedBox(
+                width: double.infinity,
+                height: 48,
+                child: ElevatedButton.icon(
+                  onPressed: _isSaving ? null : _agregarUsuario,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _Colors.brand,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.save_rounded, size: 18),
+                  label: Text(
+                    _isSaving ? 'Guardando...' : 'Guardar usuario',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
-        child: Text('Panel de Gestión de Usuarios'),
+    return Scaffold(
+      backgroundColor: _Colors.bg,
+      body: Padding(
+        padding: const EdgeInsets.all(28),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('usuarios').snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Center(child: Text('Error al cargar usuarios.'));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(color: _Colors.brand),
+              );
+            }
+
+            final docs = snapshot.data?.docs ?? <QueryDocumentSnapshot>[];
+            final filtrados = _filtrarUsuarios(docs);
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildListaUsuarios(docs, filtrados)),
+                if (_showAddPanel)
+                  const VerticalDivider(width: 1, color: _Colors.border),
+                ClipRect(
+                  child: AnimatedSize(
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeInOut,
+                    child: _showAddPanel
+                        ? SizedBox(width: 380, child: _buildAddUserForm())
+                        : const SizedBox(width: 0),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 }
+
 // ==================== PALETA DE COLORES ====================
 class _Colors {
   static const bg = Color(0xFFFAF8F5);
@@ -31,7 +545,6 @@ class _Colors {
   static const textGray = Color(0xFF8E8E8E);
   static const success = Color(0xFF556B2F);
   static const danger = Color(0xFFC97A7A);
-  static const warning = Color(0xFFC98A3E);
 
   // Paleta oscura y cálida para el sidebar (estética de tienda de velas)
   static const sidebarBg = Color(0xFF332619);
@@ -268,8 +781,10 @@ class _InventarioPageState extends State<InventarioPage> {
       body: SafeArea(
         child: switch (_section) {
           _NavSection.catalogo => _buildCatalogoSection(),
-          _NavSection.usuarios => const UsuariosPage(), // <--- Apunta a tu clase externa de usuarios.dart
-          _NavSection.reportes => const ReportesPage(), // <--- Apunta a tu clase externa de reportes.dart
+          _NavSection.usuarios =>
+            const UsuariosPage(), // <--- Apunta a tu clase externa de usuarios.dart
+          _NavSection.reportes =>
+            const ReportesPage(), // <--- Apunta a tu clase externa de reportes.dart
         },
       ),
     );
@@ -291,7 +806,7 @@ class _InventarioPageState extends State<InventarioPage> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: _Colors.brandLight.withOpacity(0.2),
+                      color: _Colors.brandLight.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
@@ -327,7 +842,7 @@ class _InventarioPageState extends State<InventarioPage> {
                 ],
               ),
             ),
-            Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
             const SizedBox(height: 12),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -373,7 +888,7 @@ class _InventarioPageState extends State<InventarioPage> {
               },
             ),
             const Spacer(),
-            Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
             _NavTile(
               icon: Icons.logout_rounded,
               label: 'Cerrar sesión',
@@ -462,7 +977,7 @@ class _InventarioPageState extends State<InventarioPage> {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           hintText: 'Buscar productos...',
-          hintStyle: TextStyle(color: _Colors.textGray.withOpacity(0.7)),
+          hintStyle: TextStyle(color: _Colors.textGray.withValues(alpha: 0.7)),
           prefixIcon: const Icon(
             Icons.search_rounded,
             size: 20,
@@ -628,39 +1143,40 @@ class _InventarioPageState extends State<InventarioPage> {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: [
-                      _StockFilter.todos,
-                      _StockFilter.disponible,
-                      _StockFilter.bajo,
-                    ].map((f) {
-                      final label = switch (f) {
-                        _StockFilter.todos => 'Todos',
-                        _StockFilter.disponible => 'Disponible',
-                        _StockFilter.bajo => 'Stock bajo',
-                      };
-                      final selected = stockTemp == f;
-                      return ChoiceChip(
-                        label: Text(label),
-                        selected: selected,
-                        onSelected: (_) =>
-                            setModalState(() => stockTemp = f),
-                        labelStyle: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: selected ? Colors.white : _Colors.textDark,
-                        ),
-                        selectedColor: _Colors.brand,
-                        backgroundColor: _Colors.bg,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: selected
-                                ? _Colors.brand
-                                : _Colors.border,
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                    children:
+                        [
+                          _StockFilter.todos,
+                          _StockFilter.disponible,
+                          _StockFilter.bajo,
+                        ].map((f) {
+                          final label = switch (f) {
+                            _StockFilter.todos => 'Todos',
+                            _StockFilter.disponible => 'Disponible',
+                            _StockFilter.bajo => 'Stock bajo',
+                          };
+                          final selected = stockTemp == f;
+                          return ChoiceChip(
+                            label: Text(label),
+                            selected: selected,
+                            onSelected: (_) =>
+                                setModalState(() => stockTemp = f),
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: selected ? Colors.white : _Colors.textDark,
+                            ),
+                            selectedColor: _Colors.brand,
+                            backgroundColor: _Colors.bg,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(20),
+                              side: BorderSide(
+                                color: selected
+                                    ? _Colors.brand
+                                    : _Colors.border,
+                              ),
+                            ),
+                          );
+                        }).toList(),
                   ),
                   const SizedBox(height: 28),
                   Row(
@@ -864,48 +1380,48 @@ class _InventarioPageState extends State<InventarioPage> {
             child: todos.isEmpty
                 ? _buildEmptyState()
                 : filtrados.isEmpty
-                    ? _buildEmptyFilterState()
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          int crossAxisCount = 2;
-                          if (constraints.maxWidth > 1300) {
-                            crossAxisCount = 4;
-                          } else if (constraints.maxWidth > 950) {
-                            crossAxisCount = 3;
-                          }
+                ? _buildEmptyFilterState()
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      int crossAxisCount = 2;
+                      if (constraints.maxWidth > 1300) {
+                        crossAxisCount = 4;
+                      } else if (constraints.maxWidth > 950) {
+                        crossAxisCount = 3;
+                      }
 
-                          return GridView.builder(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            itemCount: filtrados.length,
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 18,
-                              mainAxisSpacing: 18,
-                              childAspectRatio: 0.72,
-                            ),
-                            itemBuilder: (context, index) {
-                              final doc = filtrados[index];
-                              final data = doc.data() as Map<String, dynamic>;
+                      return GridView.builder(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        itemCount: filtrados.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: 18,
+                          mainAxisSpacing: 18,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemBuilder: (context, index) {
+                          final doc = filtrados[index];
+                          final data = doc.data() as Map<String, dynamic>;
 
-                              final String nombre = data['nombre'] ?? 'Sin nombre';
-                              final String categoria =
-                                  data['categoria'] ?? 'Sin categoría';
-                              final double precio = (data['precio'] ?? 0.0)
-                                  .toDouble();
-                              final int stock = data['stock'] ?? 0;
+                          final String nombre = data['nombre'] ?? 'Sin nombre';
+                          final String categoria =
+                              data['categoria'] ?? 'Sin categoría';
+                          final double precio = (data['precio'] ?? 0.0)
+                              .toDouble();
+                          final int stock = data['stock'] ?? 0;
 
-                              return _ProductCard(
-                                nombre: nombre,
-                                categoria: categoria,
-                                precio: precio,
-                                stock: stock,
-                                colorIndex: index,
-                                onDelete: () => _eliminarProducto(doc.id),
-                              );
-                            },
+                          return _ProductCard(
+                            nombre: nombre,
+                            categoria: categoria,
+                            precio: precio,
+                            stock: stock,
+                            colorIndex: index,
+                            onDelete: () => _eliminarProducto(doc.id),
                           );
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -937,17 +1453,23 @@ class _InventarioPageState extends State<InventarioPage> {
                 style: TextStyle(fontSize: 12, color: _Colors.textGray),
               ),
               const SizedBox(height: 24),
-              
+
               // Nombre
-              const Text('Nombre del Producto', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Text(
+                'Nombre del Producto',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _nombreController,
                 decoration: InputDecoration(
                   hintText: 'Ej. Velas Cilíndricas',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
-                validator: (v) => v!.isEmpty ? 'Ingresa un nombre válido' : null,
+                validator: (v) =>
+                    v!.isEmpty ? 'Ingresa un nombre válido' : null,
               ),
               const SizedBox(height: 16),
 
@@ -958,16 +1480,28 @@ class _InventarioPageState extends State<InventarioPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Precio (\$)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text(
+                          'Precio (\$)',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _precioController,
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           decoration: InputDecoration(
                             hintText: '0.00',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          validator: (v) => double.tryParse(v ?? '') == null ? 'Inválido' : null,
+                          validator: (v) => double.tryParse(v ?? '') == null
+                              ? 'Inválido'
+                              : null,
                         ),
                       ],
                     ),
@@ -977,16 +1511,25 @@ class _InventarioPageState extends State<InventarioPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Stock', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Text(
+                          'Stock',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
                         const SizedBox(height: 8),
                         TextFormField(
                           controller: _stockController,
                           keyboardType: TextInputType.number,
                           decoration: InputDecoration(
                             hintText: '0',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
-                          validator: (v) => int.tryParse(v ?? '') == null ? 'Inválido' : null,
+                          validator: (v) =>
+                              int.tryParse(v ?? '') == null ? 'Inválido' : null,
                         ),
                       ],
                     ),
@@ -996,12 +1539,17 @@ class _InventarioPageState extends State<InventarioPage> {
               const SizedBox(height: 16),
 
               // Categoría
-              const Text('Categoría', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const Text(
+                'Categoría',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _categoriaSeleccionada,
+                initialValue: _categoriaSeleccionada,
                 decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
                 items: _categorias.map((cat) {
                   return DropdownMenuItem(value: cat, child: Text(cat));
@@ -1023,16 +1571,24 @@ class _InventarioPageState extends State<InventarioPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _Colors.brand,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     elevation: 0,
                   ),
                   child: _isSaving
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
                         )
-                      : const Text('Guardar Producto', style: TextStyle(fontWeight: FontWeight.bold)),
+                      : const Text(
+                          'Guardar Producto',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                 ),
               ),
             ],
@@ -1048,11 +1604,19 @@ class _InventarioPageState extends State<InventarioPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: _Colors.textGray.withOpacity(0.5)),
+          Icon(
+            Icons.inventory_2_outlined,
+            size: 64,
+            color: _Colors.textGray.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 16),
           const Text(
             'Aún no hay productos registrados',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _Colors.textDark),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: _Colors.textDark,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -1070,11 +1634,19 @@ class _InventarioPageState extends State<InventarioPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off_rounded, size: 64, color: _Colors.textGray.withOpacity(0.5)),
+          Icon(
+            Icons.search_off_rounded,
+            size: 64,
+            color: _Colors.textGray.withValues(alpha: 0.5),
+          ),
           const SizedBox(height: 16),
           const Text(
             'Sin coincidencias',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _Colors.textDark),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              color: _Colors.textDark,
+            ),
           ),
           const SizedBox(height: 8),
           const Text(
@@ -1121,7 +1693,7 @@ class _KpiCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (accent ?? _Colors.brand).withOpacity(0.1),
+              color: (accent ?? _Colors.brand).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: accent ?? _Colors.brand, size: 24),
@@ -1135,12 +1707,20 @@ class _KpiCard extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: _Colors.textGray, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: _Colors.textGray,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: accent ?? _Colors.textDark),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: accent ?? _Colors.textDark,
+                  ),
                 ),
               ],
             ),
@@ -1170,7 +1750,8 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gradient = _Colors.imageGradients[colorIndex % _Colors.imageGradients.length];
+    final gradient =
+        _Colors.imageGradients[colorIndex % _Colors.imageGradients.length];
     final esBajoStock = stock < 5;
 
     return Container(
@@ -1199,7 +1780,7 @@ class _ProductCard extends StatelessWidget {
                     child: Icon(
                       _iconoCategoria(categoria),
                       size: 40,
-                      color: _Colors.brand.withOpacity(0.6),
+                      color: _Colors.brand.withValues(alpha: 0.6),
                     ),
                   ),
                   Positioned(
@@ -1212,13 +1793,17 @@ class _ProductCard extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.redAccent),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Colors.redAccent,
+                        ),
                         onPressed: onDelete,
                         constraints: const BoxConstraints(),
                         padding: EdgeInsets.zero,
                       ),
                     ),
-                  )
+                  ),
                 ],
               ),
             ),
@@ -1230,14 +1815,22 @@ class _ProductCard extends StatelessWidget {
               children: [
                 Text(
                   categoria.toUpperCase(),
-                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: _Colors.brandLight),
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    color: _Colors.brandLight,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   nombre,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: _Colors.textDark),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: _Colors.textDark,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -1245,12 +1838,21 @@ class _ProductCard extends StatelessWidget {
                   children: [
                     Text(
                       '\$${precio.toStringAsFixed(2)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _Colors.brand),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: _Colors.brand,
+                      ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: esBajoStock ? _Colors.danger.withOpacity(0.1) : _Colors.success.withOpacity(0.1),
+                        color: esBajoStock
+                            ? _Colors.danger.withValues(alpha: 0.1)
+                            : _Colors.success.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1261,7 +1863,7 @@ class _ProductCard extends StatelessWidget {
                           color: esBajoStock ? _Colors.danger : _Colors.success,
                         ),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ],
@@ -1284,21 +1886,29 @@ class _FilterChipTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: _Colors.brandLight.withOpacity(0.15),
+        color: _Colors.brandLight.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _Colors.brandLight.withOpacity(0.3)),
+        border: Border.all(color: _Colors.brandLight.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             label,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _Colors.brand),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: _Colors.brand,
+            ),
           ),
           const SizedBox(width: 4),
           GestureDetector(
             onTap: onRemove,
-            child: const Icon(Icons.close_rounded, size: 14, color: _Colors.brand),
+            child: const Icon(
+              Icons.close_rounded,
+              size: 14,
+              color: _Colors.brand,
+            ),
           ),
         ],
       ),
@@ -1328,8 +1938,8 @@ class _NavTile extends StatelessWidget {
     final color = danger
         ? _Colors.danger
         : selected
-            ? _Colors.sidebarText
-            : _Colors.sidebarTextMuted;
+        ? _Colors.sidebarText
+        : _Colors.sidebarTextMuted;
 
     return InkWell(
       onTap: onTap,
@@ -1361,7 +1971,9 @@ class _NavTile extends StatelessWidget {
                       subtitle!,
                       style: TextStyle(
                         fontSize: 10,
-                        color: selected ? _Colors.sidebarText.withOpacity(0.7) : _Colors.sidebarTextMuted,
+                        color: selected
+                            ? _Colors.sidebarText.withValues(alpha: 0.7)
+                            : _Colors.sidebarTextMuted,
                       ),
                     ),
                 ],

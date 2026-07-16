@@ -306,7 +306,7 @@ class _ReportesPageState extends State<ReportesPage> {
                     dotData: const FlDotData(show: true),
                     belowBarData: BarAreaData(
                       show: true,
-                      color: _Colors.brandLight.withOpacity(0.15),
+                      color: _Colors.brandLight.withValues(alpha: 0.15),
                     ),
                   ),
                 ],
@@ -393,10 +393,10 @@ class _ReportesPageState extends State<ReportesPage> {
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: esVenta
-                          ? _Colors.success.withOpacity(0.1)
+                          ? _Colors.success.withValues(alpha: 0.1)
                           : esAbasto
-                          ? _Colors.brandLight.withOpacity(0.15)
-                          : _Colors.danger.withOpacity(0.1),
+                          ? _Colors.brandLight.withValues(alpha: 0.15)
+                          : _Colors.danger.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
@@ -431,7 +431,6 @@ class _ReportesPageState extends State<ReportesPage> {
                   trailing: Text(
                     '${esVenta || (mov['cant'] as int) < 0 ? "-" : "+"}${(mov['cant'] as int).abs()}',
                     style: TextStyle(
-
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
                       color: esVenta || mov['cant'] < 0

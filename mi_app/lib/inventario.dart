@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'main.dart'; // Para poder regresar al Login al cerrar sesión
+import 'package:firebase_storage/firebase_storage.dart';
+import 'main.dart';
 import 'reportes.dart';
 import 'usuarios.dart';
 
@@ -16,7 +20,6 @@ class _Colors {
   static const textGray = Color(0xFF8E8E8E);
   static const success = Color(0xFF556B2F);
   static const danger = Color(0xFFC97A7A);
-  static const warning = Color(0xFFC98A3E);
 
   // Paleta oscura y cálida para el sidebar (estética de tienda de velas)
   static const sidebarBg = Color(0xFF332619);
@@ -72,11 +75,14 @@ class _InventarioPageState extends State<InventarioPage> {
   final _stockController = TextEditingController();
   final _searchController = TextEditingController();
 
+  Uint8List? _imagenBytes;
+  String? _imagenNombre;
+
   String _categoriaSeleccionada = 'Velas de Molde';
   bool _isSaving = false;
 
   // ---- Navegación y estado de la UI ----
-  _NavSection _section = _NavSection.catalogo;
+  _NavSection _section = _NavSection.usuarios;
   bool _showAddPanel = false;
   String _searchQuery = '';
   String _filtroCategoria = 'Todas';
@@ -98,7 +104,20 @@ class _InventarioPageState extends State<InventarioPage> {
     super.dispose();
   }
 
-  // Función para guardar el producto en Firebase
+  Future<void> _pickImageFromDesktop() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+
+    if (result == null || result.files.single.bytes == null) return;
+
+    setState(() {
+      _imagenBytes = result.files.single.bytes!;
+      _imagenNombre = result.files.single.name;
+    });
+  }
+
   Future<void> _agregarProducto() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -107,11 +126,27 @@ class _InventarioPageState extends State<InventarioPage> {
     });
 
     try {
+      String? imageUrl;
+
+      if (_imagenBytes != null && _imagenNombre != null) {
+        final storageRef = FirebaseStorage.instance.ref().child(
+          'productos/${DateTime.now().millisecondsSinceEpoch}_$_imagenNombre',
+        );
+
+        final uploadTask = await storageRef.putData(
+          _imagenBytes!,
+          SettableMetadata(contentType: 'image/png'),
+        );
+
+        imageUrl = await uploadTask.ref.getDownloadURL();
+      }
+
       await FirebaseFirestore.instance.collection('productos').add({
         'nombre': _nombreController.text.trim(),
         'precio': double.parse(_precioController.text.trim()),
         'stock': int.parse(_stockController.text.trim()),
         'categoria': _categoriaSeleccionada,
+        'imageUrl': imageUrl ?? '',
         'creadoEn': Timestamp.now(),
       });
 
@@ -122,7 +157,9 @@ class _InventarioPageState extends State<InventarioPage> {
       _stockController.clear();
       setState(() {
         _categoriaSeleccionada = 'Velas de Molde';
-        _showAddPanel = false; // Opcional: cierra el panel tras guardar
+        _imagenBytes = null;
+        _imagenNombre = null;
+        _showAddPanel = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -278,7 +315,7 @@ class _InventarioPageState extends State<InventarioPage> {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: _Colors.brandLight.withOpacity(0.2),
+                      color: _Colors.brandLight.withValues(alpha: 0.2),
                       borderRadius: BorderRadius.circular(14),
                     ),
                     child: const Icon(
@@ -314,7 +351,7 @@ class _InventarioPageState extends State<InventarioPage> {
                 ],
               ),
             ),
-            Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
             const SizedBox(height: 12),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -360,7 +397,7 @@ class _InventarioPageState extends State<InventarioPage> {
               },
             ),
             const Spacer(),
-            Divider(color: Colors.white.withOpacity(0.08), height: 1),
+            Divider(color: Colors.white.withValues(alpha: 0.08), height: 1),
             _NavTile(
               icon: Icons.logout_rounded,
               label: 'Cerrar sesión',
@@ -449,7 +486,7 @@ class _InventarioPageState extends State<InventarioPage> {
         style: const TextStyle(fontSize: 13),
         decoration: InputDecoration(
           hintText: 'Buscar productos...',
-          hintStyle: TextStyle(color: _Colors.textGray.withOpacity(0.7)),
+          hintStyle: TextStyle(color: _Colors.textGray.withValues(alpha: 0.7)),
           prefixIcon: const Icon(
             Icons.search_rounded,
             size: 20,
@@ -882,13 +919,18 @@ class _InventarioPageState extends State<InventarioPage> {
                               .toDouble();
                           final int stock = data['stock'] ?? 0;
 
+                          final String imageUrl = (data['imageUrl'] ?? '')
+                              .toString();
+
                           return _ProductCard(
                             nombre: nombre,
                             categoria: categoria,
                             precio: precio,
                             stock: stock,
+                            imageUrl: imageUrl.isEmpty ? null : imageUrl,
                             colorIndex: index,
                             onDelete: () => _eliminarProducto(doc.id),
+                            onEdit: () => _mostrarDialogoEdicion(doc.id, data),
                           );
                         },
                       );
@@ -900,7 +942,326 @@ class _InventarioPageState extends State<InventarioPage> {
     );
   }
 
-  // Formulario de creación completo y corregido
+  Future<void> _mostrarDialogoEdicion(
+    String idProducto,
+    Map<String, dynamic> data,
+  ) async {
+    final nombreCtrl = TextEditingController(
+      text: (data['nombre'] ?? '').toString(),
+    );
+    final precioCtrl = TextEditingController(
+      text: (data['precio'] ?? 0.0).toString(),
+    );
+    final stockCtrl = TextEditingController(
+      text: (data['stock'] ?? 0).toString(),
+    );
+
+    String categoriaTemp = (data['categoria'] ?? 'Velas de Molde').toString();
+    String imageUrl = (data['imageUrl'] ?? '').toString();
+    Uint8List? nuevaImagenBytes;
+    String? nuevaImagenNombre;
+    bool dialogSaving = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> pickReplacementImage() async {
+              final result = await FilePicker.platform.pickFiles(
+                type: FileType.image,
+                withData: true,
+              );
+
+              if (result == null || result.files.single.bytes == null) return;
+
+              setDialogState(() {
+                nuevaImagenBytes = result.files.single.bytes!;
+                nuevaImagenNombre = result.files.single.name;
+              });
+            }
+
+            Future<void> guardarCambios() async {
+              if (dialogSaving) return;
+
+              setDialogState(() => dialogSaving = true);
+
+              try {
+                String? finalImageUrl = imageUrl.isEmpty ? null : imageUrl;
+
+                if (nuevaImagenBytes != null) {
+                  final storageRef = FirebaseStorage.instance.ref().child(
+                    'productos/${DateTime.now().millisecondsSinceEpoch}_${nuevaImagenNombre ?? 'producto.png'}',
+                  );
+
+                  final task = await storageRef.putData(
+                    nuevaImagenBytes!,
+                    SettableMetadata(contentType: 'image/png'),
+                  );
+
+                  finalImageUrl = await task.ref.getDownloadURL();
+                }
+
+                await FirebaseFirestore.instance
+                    .collection('productos')
+                    .doc(idProducto)
+                    .update({
+                      'nombre': nombreCtrl.text.trim(),
+                      'precio': double.parse(precioCtrl.text.trim()),
+                      'stock': int.parse(stockCtrl.text.trim()),
+                      'categoria': categoriaTemp,
+                      'imageUrl': finalImageUrl ?? '',
+                    });
+
+                if (!mounted) return;
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Producto actualizado'),
+                    backgroundColor: _Colors.success,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              } catch (_) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('No se pudo actualizar el producto'),
+                    backgroundColor: _Colors.danger,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                );
+              } finally {
+                if (mounted) {
+                  setDialogState(() => dialogSaving = false);
+                }
+              }
+            }
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(16),
+              child: Container(
+                width: 460,
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: _Colors.brand.withValues(alpha: 0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Form(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Editar producto',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: _Colors.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Actualiza los datos y reemplaza la referencia visual si lo deseas.',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: _Colors.textGray,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Center(
+                          child: Container(
+                            height: 120,
+                            width: 120,
+                            decoration: BoxDecoration(
+                              color: _Colors.bg,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: _Colors.border),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: nuevaImagenBytes != null
+                                ? Image.memory(
+                                    nuevaImagenBytes!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : imageUrl.isNotEmpty
+                                ? Image.network(
+                                    imageUrl,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => const Center(
+                                      child: Icon(
+                                        Icons.image_not_supported_rounded,
+                                        color: _Colors.textGray,
+                                      ),
+                                    ),
+                                  )
+                                : const Center(
+                                    child: Icon(
+                                      Icons.image_rounded,
+                                      color: _Colors.textGray,
+                                    ),
+                                  ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: pickReplacementImage,
+                            icon: const Icon(Icons.upload_file_rounded),
+                            label: const Text('Cambiar imagen desde PC'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _Colors.brand,
+                              side: const BorderSide(color: _Colors.brandLight),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (nuevaImagenNombre != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(
+                              'Nueva imagen: $nuevaImagenNombre',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: _Colors.textGray,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 18),
+                        TextFormField(
+                          controller: nombreCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Nombre',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: precioCtrl,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Precio',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextFormField(
+                                controller: stockCtrl,
+                                keyboardType: TextInputType.number,
+                                decoration: const InputDecoration(
+                                  labelText: 'Stock',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        DropdownButtonFormField<String>(
+                          initialValue: _categorias.contains(categoriaTemp)
+                              ? categoriaTemp
+                              : null,
+                          decoration: const InputDecoration(
+                            labelText: 'Categoría',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _categorias.map((cat) {
+                            return DropdownMenuItem<String>(
+                              value: cat,
+                              child: Text(cat),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setDialogState(
+                              () => categoriaTemp = value ?? categoriaTemp,
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 24),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: dialogSaving ? null : guardarCambios,
+                            icon: dialogSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.edit_rounded),
+                            label: Text(
+                              dialogSaving ? 'Guardando...' : 'Guardar cambios',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _Colors.brand,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildAddForm() {
     return Container(
       color: Colors.white,
@@ -1017,7 +1378,7 @@ class _InventarioPageState extends State<InventarioPage> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: _categoriaSeleccionada,
+                initialValue: _categoriaSeleccionada,
                 decoration: InputDecoration(
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -1032,7 +1393,60 @@ class _InventarioPageState extends State<InventarioPage> {
                   });
                 },
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: 18),
+              const Text(
+                'Imagen de referencia',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                height: 140,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: _Colors.border),
+                  color: _Colors.bg,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: _imagenBytes != null
+                    ? Image.memory(_imagenBytes!, fit: BoxFit.cover)
+                    : const Center(
+                        child: Icon(
+                          Icons.image_rounded,
+                          size: 42,
+                          color: _Colors.textGray,
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _pickImageFromDesktop,
+                  icon: const Icon(Icons.upload_file_rounded),
+                  label: const Text('Seleccionar imagen desde PC'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _Colors.brand,
+                    side: const BorderSide(color: _Colors.brandLight),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              if (_imagenNombre != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    'Archivo seleccionado: $_imagenNombre',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: _Colors.textGray,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 28),
 
               // Botón Guardar
               SizedBox(
@@ -1079,7 +1493,7 @@ class _InventarioPageState extends State<InventarioPage> {
           Icon(
             Icons.inventory_2_outlined,
             size: 64,
-            color: _Colors.textGray.withOpacity(0.5),
+            color: _Colors.textGray.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1109,7 +1523,7 @@ class _InventarioPageState extends State<InventarioPage> {
           Icon(
             Icons.search_off_rounded,
             size: 64,
-            color: _Colors.textGray.withOpacity(0.5),
+            color: _Colors.textGray.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1165,7 +1579,7 @@ class _KpiCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (accent ?? _Colors.brand).withOpacity(0.1),
+              color: (accent ?? _Colors.brand).withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, color: accent ?? _Colors.brand, size: 24),
@@ -1208,23 +1622,49 @@ class _ProductCard extends StatelessWidget {
   final String categoria;
   final double precio;
   final int stock;
+  final String? imageUrl;
   final int colorIndex;
   final VoidCallback onDelete;
+  final VoidCallback onEdit;
 
   const _ProductCard({
     required this.nombre,
     required this.categoria,
     required this.precio,
     required this.stock,
+    this.imageUrl,
     required this.colorIndex,
     required this.onDelete,
+    required this.onEdit,
   });
+
+  String _localImagePathForProduct(String nombre) {
+    final nombreNormalizado = nombre.toLowerCase().trim();
+
+    if (nombreNormalizado.contains('cherry')) {
+      return '../assets/img/vela_cherry.jpg';
+    } else if (nombreNormalizado.contains('cocacola')) {
+      return '../assets/img/vela_cocacola.jpg';
+    } else if (nombreNormalizado.contains('eucalyptus') ||
+        nombreNormalizado.contains('spearmint')) {
+      return '../assets/img/vela_eucalyptus.jpg';
+    } else if (nombreNormalizado.contains('limón') ||
+        nombreNormalizado.contains('limon')) {
+      return '../assets/img/vela_limon.jpg';
+    } else if (nombreNormalizado.contains('vainilla')) {
+      return '../assets/img/wax_vainilla.jpg';
+    }
+
+    // Imagen por defecto si no coincide con ninguna
+    return '../assets/img/vela_login.jpg';
+  }
 
   @override
   Widget build(BuildContext context) {
     final gradient =
         _Colors.imageGradients[colorIndex % _Colors.imageGradients.length];
     final esBajoStock = stock < 5;
+    final localImagePath = _localImagePathForProduct(nombre);
 
     return Container(
       decoration: BoxDecoration(
@@ -1248,32 +1688,81 @@ class _ProductCard extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  Center(
-                    child: Icon(
-                      _iconoCategoria(categoria),
-                      size: 40,
-                      color: _Colors.brand.withOpacity(0.6),
+                  if (imageUrl != null && imageUrl!.isNotEmpty)
+                    Positioned.fill(
+                      child: Image.network(
+                        imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Positioned.fill(
+                          child: Image.asset(
+                            localImagePath,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Center(
+                              child: Icon(
+                                _iconoCategoria(categoria),
+                                size: 40,
+                                color: _Colors.brand.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Positioned.fill(
+                      child: Image.asset(
+                        localImagePath,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Center(
+                          child: Icon(
+                            _iconoCategoria(categoria),
+                            size: 40,
+                            color: _Colors.brand.withValues(alpha: 0.6),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
                   Positioned(
                     top: 10,
                     right: 10,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.white24,
-                        shape: BoxShape.circle,
-                      ),
-                      child: IconButton(
-                        icon: const Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                          color: Colors.redAccent,
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.white24,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.edit_rounded,
+                              size: 18,
+                              color: _Colors.brand,
+                            ),
+                            onPressed: onEdit,
+                            constraints: const BoxConstraints(),
+                            padding: EdgeInsets.zero,
+                          ),
                         ),
-                        onPressed: onDelete,
-                        constraints: const BoxConstraints(),
-                        padding: EdgeInsets.zero,
-                      ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(
+                            color: Colors.white24,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              size: 18,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: onDelete,
+                            constraints: const BoxConstraints(),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -1323,8 +1812,8 @@ class _ProductCard extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: esBajoStock
-                            ? _Colors.danger.withOpacity(0.1)
-                            : _Colors.success.withOpacity(0.1),
+                            ? _Colors.danger.withValues(alpha: 0.1)
+                            : _Colors.success.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1358,9 +1847,9 @@ class _FilterChipTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: _Colors.brandLight.withOpacity(0.15),
+        color: _Colors.brandLight.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _Colors.brandLight.withOpacity(0.3)),
+        border: Border.all(color: _Colors.brandLight.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1444,7 +1933,7 @@ class _NavTile extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 10,
                         color: selected
-                            ? _Colors.sidebarText.withOpacity(0.7)
+                            ? _Colors.sidebarText.withValues(alpha: 0.7)
                             : _Colors.sidebarTextMuted,
                       ),
                     ),

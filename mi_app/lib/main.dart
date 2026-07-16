@@ -30,6 +30,21 @@ class MyApp extends StatelessWidget {
           primary: const Color(0xFF8C6239),
           surface: const Color(0xFFFAF8F5),
         ),
+        tooltipTheme: TooltipThemeData(
+          decoration: BoxDecoration(
+            color: const Color(0xFF556B2F).withOpacity(0.8),
+            borderRadius: BorderRadius.circular(8.0),
+          ),
+          textStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          waitDuration: const Duration(milliseconds: 300),
+          showDuration: const Duration(seconds: 3),
+          triggerMode: TooltipTriggerMode.tap,
+        ),
       ),
       home: const LoginPage(),
     );
@@ -126,7 +141,7 @@ class _LoginPageState extends State<LoginPage> {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF8C6239).withOpacity(0.06),
+                color: const Color(0xFF8C6239).withValues(alpha: 0.06),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -252,7 +267,7 @@ class _LoginPageState extends State<LoginPage> {
                                         : Icons.visibility_outlined,
                                     color: const Color(
                                       0xFF8C6239,
-                                    ).withOpacity(0.6),
+                                    ).withValues(alpha: 0.6),
                                     size: 18,
                                   ),
                                   onPressed: () {
@@ -304,57 +319,6 @@ class _LoginPageState extends State<LoginPage> {
                                   ),
                           ),
                         ),
-                        const SizedBox(height: 24),
-
-                        // --- Línea divisoria ---
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Divider(
-                                color: Color(0xFFECE6DF),
-                                thickness: 1,
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Text(
-                                'o continuar con',
-                                style: TextStyle(
-                                  color: const Color(
-                                    0xFF8E8E8E,
-                                  ).withOpacity(0.8),
-                                  fontSize: 10,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                            const Expanded(
-                              child: Divider(
-                                color: Color(0xFFECE6DF),
-                                thickness: 1,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // --- Botones de Login Social ---
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            _socialLoginButton(
-                              Icons.g_mobiledata,
-                              () => print('Login con Google'),
-                            ),
-                            const SizedBox(width: 16),
-                            _socialLoginButton(
-                              Icons.apple,
-                              () => print('Login con Apple'),
-                            ),
-                          ],
-                        ),
                       ],
                     ),
                   ),
@@ -382,7 +346,9 @@ class _LoginPageState extends State<LoginPage> {
   InputDecoration _buildInputDecoration(String hint) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(color: const Color(0xFF8E8E8E).withOpacity(0.5)),
+      hintStyle: TextStyle(
+        color: const Color(0xFF8E8E8E).withValues(alpha: 0.5),
+      ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       filled: true,
       fillColor: const Color(0xFFFAF8F5),
@@ -397,22 +363,6 @@ class _LoginPageState extends State<LoginPage> {
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFFE2B28B), width: 1.5),
-      ),
-    );
-  }
-
-  Widget _socialLoginButton(IconData icon, VoidCallback onPressed) {
-    return Container(
-      width: 50,
-      height: 44,
-      decoration: BoxDecoration(
-        color: const Color(0xFFFAF8F5),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFECE6DF)),
-      ),
-      child: IconButton(
-        icon: Icon(icon, color: const Color(0xFF8C6239), size: 22),
-        onPressed: onPressed,
       ),
     );
   }
@@ -437,7 +387,10 @@ class VelasLogIn extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withValues(alpha: 0.4),
+                ],
               ),
             ),
           ),
@@ -451,7 +404,7 @@ class VelasLogIn extends StatelessWidget {
                   filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
                   child: Container(
                     width: double.infinity,
-                    color: Colors.white.withOpacity(0.12),
+                    color: Colors.white.withValues(alpha: 0.12),
                     padding: const EdgeInsets.all(20.0),
                     child: const Column(
                       mainAxisSize: MainAxisSize.min,
